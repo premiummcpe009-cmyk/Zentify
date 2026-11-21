@@ -1,0 +1,48 @@
+name: Unzip project
+
+# Upload Zentify.zip to the repo root (or run manually) and this extracts it,
+# commits the files, removes the zip, then starts the APK build.
+
+on:
+  workflow_dispatch:
+    inputs:
+      zip_path:
+        description: 'Path of the zip inside the repo'
+        default: 'Zentify.zip'
+  push:
+    paths:
+      - 'Zentify.zip'
+
+permissions:
+  contents: write
+  actions: write
+
+jobs:
+  unzip:
+    runs-on: ubuntu-latest
+    env:
+      ZIP: ${{ inputs.zip_path || 'Zentify.zip' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract
+        run: |
+          test -f "$ZIP" || { echo "::error::$ZIP not found in the repo"; exit 1; }
+          # .github/* is skipped: GITHUB_TOKEN is not allowed to modify workflow files.
+          unzip -o "$ZIP" -x '.github/*' -d .
+          rm -f "$ZIP"
+
+      - name: Commit extracted files
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add -A
+          if git diff --cached --quiet; then echo "Nothing to commit"; exit 0; fi
+          git commit -m "Extract $ZIP"
+          git push
+
+      - name: Start APK build
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run build-apk.yml --ref "${{ github.ref_name }}"
+        
